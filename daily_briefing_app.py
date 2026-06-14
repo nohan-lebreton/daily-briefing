@@ -407,6 +407,11 @@ def _build_settings_html() -> str:
   .btn-primary:disabled { background:#d2d2d7; color:#fff; cursor:default; transform:none; }
   .btn-danger  { background:#ff3b30; color:#fff; }
   .btn-danger:hover  { background:#ff2d20; }
+  .modal-bd { position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:900; }
+  .modal-box { background:#fff;border-radius:14px;padding:24px 24px 18px;width:280px;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,.2); }
+  .modal-title { font-size:15px;font-weight:600;margin-bottom:6px; }
+  .modal-msg { font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:20px; }
+  .modal-actions { display:flex;gap:8px;justify-content:center; }
 </style>
 </head>
 <body>
@@ -642,8 +647,30 @@ async function testAlarm() {
   await callApi('run_test', getConfig());
 }
 
+function showModal(title, msg, buttons) {
+  return new Promise(resolve => {
+    const bd = document.createElement('div');
+    bd.className = 'modal-bd';
+    bd.innerHTML = `<div class="modal-box">
+      <div class="modal-title">${title}</div>
+      ${msg ? `<div class="modal-msg">${msg}</div>` : ''}
+      <div class="modal-actions">
+        ${buttons.map((b,i)=>`<button class="btn ${b.cls}" data-i="${i}">${b.label}</button>`).join('')}
+      </div></div>`;
+    document.body.appendChild(bd);
+    bd.querySelectorAll('button').forEach(btn => {
+      btn.onclick = () => { document.body.removeChild(bd); resolve(+btn.dataset.i); };
+    });
+  });
+}
+
 async function uninstallApp() {
-  if (!confirm('Désinstaller Daily Briefing ?\n\nL\'alarme sera supprimée et l\'application quittera.')) return;
+  const r = await showModal(
+    'Désinstaller Daily Briefing ?',
+    "L'alarme sera supprimée et l'application quittera.",
+    [{label:'Annuler', cls:'btn-outline'}, {label:'Désinstaller', cls:'btn-danger'}]
+  );
+  if (r !== 1) return;
   callApi('uninstall', null);
 }
 
@@ -653,10 +680,10 @@ async function updateApp() {
   btn.textContent = 'Mise à jour…';
   const result = await callApi('update_from_repo', null);
   if (result === 'ok') {
-    alert('✓ App mise à jour — elle redémarre automatiquement.');
+    await showModal('Mise à jour réussie', "L'app redémarre automatiquement.", [{label:'OK', cls:'btn-primary'}]);
     callApi('close', null);
   } else {
-    alert('Erreur : ' + result);
+    await showModal('Erreur', String(result), [{label:'OK', cls:'btn-outline'}]);
     btn.disabled = false;
     btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5.5" y1="9" x2="5.5" y2="1"/><polyline points="2,4 5.5,1 9,4"/></svg> Mettre à jour';
   }
