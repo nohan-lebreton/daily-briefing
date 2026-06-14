@@ -17,6 +17,14 @@ import threading
 import datetime
 from pathlib import Path
 
+# ─── Version ──────────────────────────────────────────────────────────────────
+
+VERSION      = "2026-06-14"
+REPO_RAW_URL = (
+    "https://raw.githubusercontent.com/"
+    "nohan-lebreton/daily-briefing/main/daily_briefing_app.py"
+)
+
 # ─── Chemins ──────────────────────────────────────────────────────────────────
 
 APP_SCRIPT   = Path(__file__).resolve()
@@ -424,14 +432,17 @@ def _build_settings_html() -> str:
       <div class="tb-sub">Réveil intelligent</div>
     </div>
   </div>
-  <button class="btn-update" onclick="updateApp()">
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none"
-         stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <line x1="5.5" y1="9" x2="5.5" y2="1"/>
-      <polyline points="2,4 5.5,1 9,4"/>
-    </svg>
-    Mettre à jour
-  </button>
+  <div style="display:flex;align-items:center;gap:8px">
+    <span id="ver" style="font-size:11px;color:var(--t3)">…</span>
+    <button class="btn-update" onclick="updateApp()">
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none"
+           stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5.5" y1="9" x2="5.5" y2="1"/>
+        <polyline points="2,4 5.5,1 9,4"/>
+      </svg>
+      Mettre à jour
+    </button>
+  </div>
 </div>
 
 <div class="content">
@@ -664,6 +675,19 @@ function showModal(title, msg, buttons) {
   });
 }
 
+async function checkVersion() {
+  const el = document.getElementById('ver');
+  const v = await callApi('get_version', null);
+  if (!v) { el.textContent = ''; return; }
+  if (!v.remote) {
+    el.textContent = 'v' + v.local;
+  } else if (v.local === v.remote) {
+    el.innerHTML = 'v' + v.local + ' <span style="color:var(--green)">✓</span>';
+  } else {
+    el.innerHTML = 'v' + v.local + ' <span style="color:var(--accent)">→ v' + v.remote + '</span>';
+  }
+}
+
 async function uninstallApp() {
   const r = await showModal(
     'Désinstaller Daily Briefing ?',
@@ -691,6 +715,7 @@ window.addEventListener('load', () => setTimeout(async () => {
   const cfg = await callApi('get_config', null);
   populate(cfg);
   loadSummary();
+  checkVersion();
 }, 50));
 </script>
 </body>
@@ -744,7 +769,21 @@ def open_settings_window():
             rid    = str(body.get("id", ""))
             result = None
 
-            if action == "get_config":
+            if action == "get_version":
+                import urllib.request
+                remote = None
+                try:
+                    with urllib.request.urlopen(REPO_RAW_URL, timeout=4) as r:
+                        head = r.read(300).decode("utf-8", errors="ignore")
+                    for line in head.splitlines():
+                        if line.startswith("VERSION"):
+                            remote = line.split('"')[1]
+                            break
+                except Exception:
+                    pass
+                result = {"local": VERSION, "remote": remote}
+
+            elif action == "get_config":
                 result = load_config()
 
             elif action == "save_settings":
@@ -776,12 +815,8 @@ def open_settings_window():
 
             elif action == "update_from_repo":
                 import urllib.request
-                RAW_URL = (
-                    "https://raw.githubusercontent.com/"
-                    "nohan-lebreton/daily-briefing/main/daily_briefing_app.py"
-                )
                 try:
-                    with urllib.request.urlopen(RAW_URL, timeout=15) as r:
+                    with urllib.request.urlopen(REPO_RAW_URL, timeout=15) as r:
                         new_code = r.read()
                     APP_SCRIPT.write_bytes(new_code)
                     subprocess.Popen(
