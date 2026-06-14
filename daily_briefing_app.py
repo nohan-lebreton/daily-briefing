@@ -21,7 +21,7 @@ from pathlib import Path
 
 # ─── Version ──────────────────────────────────────────────────────────────────
 
-VERSION      = "2026-06-14.6"
+VERSION      = "2026-06-14.7"
 REPO_RAW_URL = (
     "https://raw.githubusercontent.com/"
     "nohan-lebreton/daily-briefing/main/daily_briefing_app.py"
@@ -827,8 +827,11 @@ def open_settings_window():
             except Exception:
                 return
             action = str(body.get("action", ""))
-            data   = body.get("data") or {}
-            if not isinstance(data, dict):
+            data = body.get("data") or {}
+            try:
+                if not isinstance(data, dict):
+                    data = dict(data)
+            except Exception:
                 data = {}
             rid    = str(body.get("id", ""))
             result = None
@@ -851,10 +854,9 @@ def open_settings_window():
                 result = str(SUMMARY_FILE)
 
             elif action == "copy_to_clipboard":
-                from AppKit import NSPasteboard, NSPasteboardTypeString
-                pb = NSPasteboard.generalPasteboard()
-                pb.clearContents()
-                pb.setString_forType_(str(data.get("text", "")), NSPasteboardTypeString)
+                text = str(data.get("text", ""))
+                p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+                p.communicate(input=text.encode("utf-8"))
                 result = "ok"
 
             elif action == "get_config":
