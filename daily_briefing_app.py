@@ -21,7 +21,7 @@ from pathlib import Path
 
 # ─── Version ──────────────────────────────────────────────────────────────────
 
-VERSION      = "2026-06-14.7"
+VERSION      = "2026-06-14.8"
 REPO_RAW_URL = (
     "https://raw.githubusercontent.com/"
     "nohan-lebreton/daily-briefing/main/daily_briefing_app.py"
@@ -87,7 +87,10 @@ DEFAULT_CONFIG = {
     "music_delay": 10,                 # secondes de musique avant le brief
     "alarm_volume": 80,                # volume Spotify pendant le réveil (0-100)
     "voice": "Thomas",
-    "voice_volume": 80                 # volume de la voix TTS (0-100)
+    "voice_volume": 80,                # volume de la voix TTS (0-100)
+    "api_key": "",                     # clé Anthropic — stockée localement, jamais dans le repo
+    "ai_model": "claude-haiku-4-5-20251001",
+    "ai_context": "",                  # contexte supplémentaire optionnel
 }
 
 # launchd : 0=Dim, 1=Lun … 6=Sam  →  notre index 0=Lun, donc décalage
@@ -112,6 +115,105 @@ def save_config(cfg: dict):
     with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f, indent=2)
     _install_launchd(cfg)
+
+
+# ─── Génération IA ────────────────────────────────────────────────────────────
+
+_MONTHS_FR = ["janvier","février","mars","avril","mai","juin",
+               "juillet","août","septembre","octobre","novembre","décembre"]
+_DAYS_FR   = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"]
+
+_CALENDAR_SCRIPT = """
+tell application "Calendar"
+    set todayDate to current date
+    set h to hours of todayDate
+    set m to minutes of todayDate
+    set s to seconds of todayDate
+    set startOfDay to todayDate - h * hours - m * minutes - s * seconds
+    set endOfDay to startOfDay + (23 * hours + 59 * minutes + 59 * seconds)
+    set result to ""
+    repeat with cal in calendars
+        try
+            set evts to (every event of cal whose start date >= startOfDay and start date <= endOfDay)
+            repeat with evt in evts
+                set evtStart to start date of evt
+                set hh to text -2 thru -1 of ("0" & (hours of evtStart as integer))
+                set mm to text -2 thru -1 of ("0" & (minutes of evtStart as integer))
+                set result to result & hh & ":" & mm & " - " & summary of evt & linefeed
+            end repeat
+        end try
+    end repeat
+    return result
+end tell
+"""
+
+
+def get_calendar_events() -> str:
+    try:
+        r = subprocess.run(
+            ["osascript", "-e", _CALENDAR_SCRIPT],
+            capture_output=True, text=True, timeout=15,
+        )
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+
+def generate_brief(cfg: dict) -> str:
+    """Appelle l'API Anthropic pour générer le brief du jour et l'écrit dans SUMMARY_FILE."""
+    import urllib.request, urllib.error
+
+    api_key = cfg.get("api_key", "").strip()
+    if not api_key:
+        return ""
+
+    model  = cfg.get("ai_model", "claude-haiku-4-5-20251001")
+    events = get_calendar_events()
+    today  = datetime.date.today()
+    date_str = f"{_DAYS_FR[today.weekday()]} {today.day} {_MONTHS_FR[today.month - 1]} {today.year}"
+
+    parts = [f"Génère un brief de réveil concis pour {date_str}."]
+    if events:
+        parts.append(f"Événements du jour :\n{events}")
+    else:
+        parts.append("Aucun événement calendrier pour aujourd'hui.")
+    extra = cfg.get("ai_context", "").strip()
+    if extra:
+        parts.append(f"Contexte supplémentaire : {extra}")
+    parts.append(
+        "Ce brief sera lu à voix haute au réveil. "
+        "Garde-le naturel, fluide et en français. 3 à 5 phrases."
+    )
+
+    payload = json.dumps({
+        "model": model,
+        "max_tokens": 512,
+        "messages": [{"role": "user", "content": "\n\n".join(parts)}],
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            resp = json.loads(r.read().decode("utf-8"))
+        text = resp["content"][0]["text"].strip()
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="ignore")
+        text = f"Erreur API ({e.code}) : {body[:300]}"
+    except Exception as e:
+        text = f"Erreur : {e}"
+
+    SUMMARY_FILE.write_text(text)
+    return text
 
 
 # ─── launchd ──────────────────────────────────────────────────────────────────
@@ -192,34 +294,29 @@ def run_alarm(cfg: dict, test_mode: bool = False):
         time.sleep(3)
         set_spotify_volume(alarm_volume)
 
-    # 2. Attendre (pleine musique)
+    # 2. Générer le brief en parallèle pendant que la musique joue
+    gen_thread = threading.Thread(target=generate_brief, args=(cfg,), daemon=True)
+    gen_thread.start()
+
+    # 3. Attendre (pleine musique)
     delay = 5 if test_mode else music_delay
     time.sleep(delay)
 
-    # 3. Attendre le fichier résumé (écrit par Cowork, max 5 min)
-    if not test_mode:
-        waited = 0
-        today  = datetime.date.today()
-        while waited < 300:
-            if SUMMARY_FILE.exists():
-                mtime = datetime.datetime.fromtimestamp(SUMMARY_FILE.stat().st_mtime).date()
-                if mtime == today:
-                    break
-            time.sleep(5)
-            waited += 5
+    # 4. Attendre la fin de génération (max 30 s après le délai musique)
+    gen_thread.join(timeout=30)
 
-    # 4. Baisser le volume pendant le brief
+    # 5. Baisser le volume pendant le brief
     set_spotify_volume(brief_volume)
 
-    # 5. Lire le résumé (en test on lit aussi le vrai fichier si disponible)
+    # 6. Lire le résumé
     if SUMMARY_FILE.exists():
         summary = SUMMARY_FILE.read_text().strip() or "Aucun résumé disponible."
     elif test_mode:
-        summary = "Bonjour ! Aucun résumé trouvé. Lance d'abord la tâche Cowork daily briefing pour générer le fichier."
+        summary = "Bonjour ! Aucun résumé trouvé. Configure une clé API Anthropic dans les paramètres pour générer ton brief automatiquement."
     else:
         summary = "Je n'ai pas pu récupérer le résumé de la journée."
 
-    # Sauvegarder le volume système, mettre le volume voix, lire, restaurer
+    # 7. Régler le volume de la voix TTS
     try:
         sys_vol = subprocess.run(
             ["osascript", "-e", "output volume of (get volume settings)"],
@@ -243,7 +340,7 @@ def run_alarm(cfg: dict, test_mode: bool = False):
         except Exception:
             pass
 
-    # 6. Reprendre la musique au volume de réveil
+    # 8. Reprendre la musique au volume de réveil
     time.sleep(0.5)
     set_spotify_volume(alarm_volume)
 
@@ -550,11 +647,50 @@ def _build_settings_html() -> str:
   </div>
 
   <div class="section">
+    <div class="section-label">Intelligence Artificielle</div>
+    <div class="card">
+      <div class="row" style="flex-direction:column;align-items:flex-start;padding-top:10px;padding-bottom:8px;gap:3px;">
+        <span class="row-label" style="font-weight:500">Clé API Anthropic</span>
+        <span class="row-sub">Stockée localement sur ton Mac, jamais dans le code ni le repo.</span>
+      </div>
+      <div class="row" style="gap:6px;">
+        <input type="password" class="text-inp" id="api-key" placeholder="sk-ant-api03-…" autocomplete="off" spellcheck="false">
+        <button onclick="toggleApiKey()" id="api-key-eye"
+                style="border:none;background:none;color:var(--t3);font:12px/1 inherit;cursor:pointer;flex-shrink:0;padding:0 4px;">Voir</button>
+      </div>
+      <div class="row">
+        <span class="row-label">Modèle</span>
+        <div class="select-wrap">
+          <select id="ai-model">
+            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 — rapide</option>
+            <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — équilibré</option>
+            <option value="claude-opus-4-8">Claude Opus 4.8 — puissant</option>
+          </select>
+          <span class="select-caret">▾</span>
+        </div>
+      </div>
+      <div class="row" style="flex-direction:column;align-items:flex-start;padding-top:10px;padding-bottom:12px;gap:6px;">
+        <span class="row-label" style="font-weight:500">Contexte <span style="color:var(--t3);font-weight:400">(optionnel)</span></span>
+        <textarea id="ai-context"
+                  placeholder="Ex : Je travaille sur le projet X, rappelle-moi mes priorités du jour…"
+                  style="width:100%;border:1.5px solid var(--sep);border-radius:8px;padding:8px 10px;
+                         font:12px/1.5 inherit;color:var(--t1);resize:vertical;min-height:60px;
+                         outline:none;background:#fff;transition:border-color .15s;"
+                  onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--sep)'"
+                  oninput="checkDirty()"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
     <div class="section-label">Brief du jour</div>
     <div class="card">
       <div class="brief-header">
         <span class="brief-date" id="brief-date">Chargement…</span>
-        <button class="btn-refresh" onclick="loadSummary()">↺ Actualiser</button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn-refresh" id="btn-generate" onclick="generateBrief()">✨ Générer</button>
+          <button class="btn-refresh" onclick="loadSummary()">↺ Actualiser</button>
+        </div>
       </div>
       <div class="brief-body" id="brief-text">—</div>
     </div>
@@ -564,8 +700,9 @@ def _build_settings_html() -> str:
     <div class="section-label">Comment générer le brief ?</div>
     <div class="card">
       <div style="padding:14px 16px;font-size:13px;line-height:1.6;color:#3a3a3c">
-        Demande à ton IA (Claude, ChatGPT…) de créer un <strong>runner automatique</strong>
-        qui génère ton résumé de journée et le place ici&nbsp;:
+        Avec une clé API, le brief est <strong>généré automatiquement</strong> depuis ton calendrier
+        macOS à l'heure de l'alarme. Tu peux aussi le remplacer manuellement — le contenu du fichier
+        ci-dessous sera lu à voix haute&nbsp;:
         <div style="margin:10px 0;display:flex;align-items:center;gap:8px">
           <div id="summary-path" style="flex:1;padding:8px 12px;background:#f5f5f7;border-radius:8px;
                     font:12px/1.5 'SF Mono','Menlo',monospace;color:#1d1d1f;word-break:break-all">…</div>
@@ -573,8 +710,6 @@ def _build_settings_html() -> str:
                   border:1px solid #d2d2d7;background:#fff;font:12px/1 inherit;cursor:pointer"
                   id="copy-btn">Copier</button>
         </div>
-        Ce fichier doit être <strong>mis à jour chaque matin</strong> avant l'heure de ton réveil.
-        L'app le lira et le dictera à voix haute après ta musique.
       </div>
     </div>
   </div>
@@ -614,7 +749,7 @@ function checkDirty() {
 }
 
 function watchInputs() {
-  document.querySelectorAll('input, select').forEach(el => {
+  document.querySelectorAll('input, select, textarea').forEach(el => {
     el.addEventListener('input',  checkDirty);
     el.addEventListener('change', checkDirty);
   });
@@ -658,6 +793,9 @@ function getConfig() {
     alarm_volume: parseInt(document.getElementById('volume').value),
     voice:        document.getElementById('voice').value,
     voice_volume: parseInt(document.getElementById('voice-volume').value),
+    api_key:      document.getElementById('api-key').value,
+    ai_model:     document.getElementById('ai-model').value,
+    ai_context:   document.getElementById('ai-context').value.trim(),
   };
 }
 
@@ -673,6 +811,9 @@ function populate(cfg) {
   syncSlider(document.getElementById('delay'),        'delay-val',     v=>v+' s');
   syncSlider(document.getElementById('volume'),       'vol-val',       v=>v+' %');
   syncSlider(document.getElementById('voice-volume'), 'voice-vol-val', v=>v+' %');
+  document.getElementById('api-key').value    = cfg.api_key    || '';
+  document.getElementById('ai-model').value   = cfg.ai_model   || 'claude-haiku-4-5-20251001';
+  document.getElementById('ai-context').value = cfg.ai_context || '';
   // Fixer le snapshot de référence et verrouiller le bouton
   _savedSnapshot = configSnapshot();
   document.getElementById('btn-save').disabled = true;
@@ -688,7 +829,7 @@ async function loadSummary() {
   } else {
     document.getElementById('brief-date').textContent = '';
     document.getElementById('brief-text').innerHTML =
-      '<span class="placeholder">Aucun brief disponible.\nLance la tâche Cowork "daily-breifing" pour en générer un.</span>';
+      '<span class="placeholder">Aucun brief disponible.\nClique sur ✨ Générer pour créer ton premier brief.</span>';
   }
 }
 
@@ -721,6 +862,27 @@ function showModal(title, msg, buttons) {
       btn.onclick = () => { document.body.removeChild(bd); resolve(+btn.dataset.i); };
     });
   });
+}
+
+function toggleApiKey() {
+  const inp = document.getElementById('api-key');
+  const btn = document.getElementById('api-key-eye');
+  if (inp.type === 'password') { inp.type = 'text';     btn.textContent = 'Cacher'; }
+  else                         { inp.type = 'password'; btn.textContent = 'Voir'; }
+}
+
+async function generateBrief() {
+  const btn = document.getElementById('btn-generate');
+  btn.textContent = '⏳…';
+  btn.disabled = true;
+  const r = await callApi('generate_brief', null);
+  btn.textContent = '✨ Générer';
+  btn.disabled = false;
+  if (r && r.error) {
+    await showModal('Erreur', r.error, [{label:'OK', cls:'btn-outline'}]);
+  } else {
+    loadSummary();
+  }
 }
 
 let _summaryPath = '';
@@ -880,6 +1042,24 @@ def open_settings_window():
                     }
                 else:
                     result = {"date": None, "text": None}
+
+            elif action == "generate_brief":
+                cfg_now = load_config()
+                def _run_gen(_rid=rid):
+                    try:
+                        text = generate_brief(cfg_now)
+                        if text:
+                            js_result = json.dumps({"ok": True})
+                        else:
+                            js_result = json.dumps({"error": "Aucune clé API configurée."})
+                    except Exception as exc:
+                        js_result = json.dumps({"error": str(exc)})
+                    js = f"window.__pyResp({js_result}, '{_rid}');"
+                    wv2 = _settings_refs.get("wv")
+                    if wv2:
+                        wv2.evaluateJavaScript_completionHandler_(js, None)
+                threading.Thread(target=_run_gen, daemon=True).start()
+                return  # réponse envoyée depuis le thread
 
             elif action == "uninstall":
                 launch_agents = Path.home() / "Library" / "LaunchAgents"
