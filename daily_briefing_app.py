@@ -678,15 +678,12 @@ async function updateApp() {
   const btn = document.querySelector('.btn-update');
   btn.disabled = true;
   btn.textContent = 'Mise à jour…';
+  // En cas de succès, l'app se termine côté Python avant de répondre — on ne
+  // recevra une réponse qu'en cas d'erreur.
   const result = await callApi('update_from_repo', null);
-  if (result === 'ok') {
-    await showModal('Mise à jour réussie', "L'app redémarre automatiquement.", [{label:'OK', cls:'btn-primary'}]);
-    callApi('close', null);
-  } else {
-    await showModal('Erreur', String(result), [{label:'OK', cls:'btn-outline'}]);
-    btn.disabled = false;
-    btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5.5" y1="9" x2="5.5" y2="1"/><polyline points="2,4 5.5,1 9,4"/></svg> Mettre à jour';
-  }
+  await showModal('Erreur', String(result), [{label:'OK', cls:'btn-outline'}]);
+  btn.disabled = false;
+  btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5.5" y1="9" x2="5.5" y2="1"/><polyline points="2,4 5.5,1 9,4"/></svg> Mettre à jour';
 }
 
 // Init après chargement — setTimeout garantit que le bridge webkit est prêt
@@ -791,7 +788,9 @@ def open_settings_window():
                         [sys.executable, str(APP_SCRIPT)],
                         start_new_session=True,
                     )
-                    result = "ok"
+                    # Quitter l'instance actuelle pour éviter le double icône
+                    NSApplication.sharedApplication().terminate_(None)
+                    return
                 except Exception as e:
                     result = f"error:{e}"
 
