@@ -21,7 +21,7 @@ from pathlib import Path
 
 # ─── Version ──────────────────────────────────────────────────────────────────
 
-VERSION      = "2026-06-14.9"
+VERSION      = "2026-06-14.10"
 REPO_RAW_URL = (
     "https://raw.githubusercontent.com/"
     "nohan-lebreton/daily-briefing/main/daily_briefing_app.py"
@@ -650,18 +650,19 @@ def _build_settings_html() -> str:
     <div class="section-label">Accès au calendrier</div>
     <div class="card">
       <div style="padding:14px 16px;font-size:13px;line-height:1.6;color:#3a3a3c;">
-        L'app lit tes événements du jour depuis <strong>l'app Calendrier macOS</strong>.
-        Elle est compatible avec <strong>Google Calendar, iCloud, Outlook</strong> — ou tout autre
-        agenda — à condition de le synchroniser une fois&nbsp;:
-        <ol style="margin:10px 0 4px 18px;display:flex;flex-direction:column;gap:6px;">
-          <li>Ouvre <strong>Réglages Système</strong> → <strong>Comptes Internet</strong></li>
-          <li>Ajoute ton compte (Google, iCloud…) et active <strong>Calendrier</strong></li>
-          <li>Tes événements apparaissent alors dans l'app Calendrier — et dans ce brief</li>
-        </ol>
-        <div style="margin-top:10px;padding:8px 12px;background:#f0f9f0;border-radius:8px;
-                    border:1px solid #a8dab5;font-size:12px;color:#1a7f37;display:flex;gap:6px;align-items:flex-start;">
-          <span style="flex-shrink:0;">✓</span>
-          <span>Si ton calendrier apparaît déjà dans l'app Calendrier macOS, tu n'as rien à faire.</span>
+        Pour que l'IA ait accès à tes événements du jour, connecte ton calendrier
+        favori (Google Calendar, Outlook, iCloud…) à l'outil que tu utilises&nbsp;:
+        <div style="margin:12px 0;display:flex;flex-direction:column;gap:8px;">
+          <div style="padding:10px 14px;background:#f5f5f7;border-radius:10px;">
+            <div style="font-weight:600;margin-bottom:3px;">Sur claude.ai</div>
+            <div style="color:var(--t2);">Va dans <strong>Intégrations</strong> (icône puzzle) → connecte ton calendrier.
+            Claude aura alors accès à tes événements lors de la génération du brief.</div>
+          </div>
+          <div style="padding:10px 14px;background:#f5f5f7;border-radius:10px;">
+            <div style="font-weight:600;margin-bottom:3px;">Avec la clé API (automatique)</div>
+            <div style="color:var(--t2);">L'app lit l'<strong>app Calendrier macOS</strong>. Assure-toi que ton
+            calendrier est synchronisé via <strong>Réglages Système → Comptes Internet</strong>.</div>
+          </div>
         </div>
       </div>
     </div>
