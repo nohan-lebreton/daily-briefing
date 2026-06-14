@@ -770,9 +770,10 @@ def open_settings_window():
                     result = {"date": None, "text": None}
 
             elif action == "uninstall":
-                subprocess.run(["launchctl", "unload", str(PLIST_PATH)], capture_output=True)
-                if PLIST_PATH.exists():
-                    PLIST_PATH.unlink()
+                launch_agents = Path.home() / "Library" / "LaunchAgents"
+                for plist in launch_agents.glob("com.fairforge.daily-briefing*.plist"):
+                    subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
+                    plist.unlink(missing_ok=True)
                 NSApplication.sharedApplication().terminate_(None)
                 return
 
