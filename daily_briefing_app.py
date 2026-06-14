@@ -21,7 +21,7 @@ from pathlib import Path
 
 # ─── Version ──────────────────────────────────────────────────────────────────
 
-VERSION      = "2026-06-14.4"
+VERSION      = "2026-06-14.5"
 REPO_RAW_URL = (
     "https://raw.githubusercontent.com/"
     "nohan-lebreton/daily-briefing/main/daily_briefing_app.py"
@@ -566,9 +566,12 @@ def _build_settings_html() -> str:
       <div style="padding:14px 16px;font-size:13px;line-height:1.6;color:#3a3a3c">
         Demande à ton IA (Claude, ChatGPT…) de créer un <strong>runner automatique</strong>
         qui génère ton résumé de journée et le place ici&nbsp;:
-        <div style="margin:10px 0;padding:8px 12px;background:#f5f5f7;border-radius:8px;
-                    font:12px/1.5 'SF Mono','Menlo',monospace;color:#1d1d1f;word-break:break-all">
-          ~/daily-briefing-summary.txt
+        <div style="margin:10px 0;display:flex;align-items:center;gap:8px">
+          <div id="summary-path" style="flex:1;padding:8px 12px;background:#f5f5f7;border-radius:8px;
+                    font:12px/1.5 'SF Mono','Menlo',monospace;color:#1d1d1f;word-break:break-all">…</div>
+          <button onclick="copyPath()" style="flex-shrink:0;padding:6px 12px;border-radius:8px;
+                  border:1px solid #d2d2d7;background:#fff;font:12px/1 inherit;cursor:pointer"
+                  id="copy-btn">Copier</button>
         </div>
         Ce fichier doit être <strong>mis à jour chaque matin</strong> avant l'heure de ton réveil.
         L'app le lira et le dictera à voix haute après ta musique.
@@ -720,6 +723,22 @@ function showModal(title, msg, buttons) {
   });
 }
 
+let _summaryPath = '';
+async function loadSummaryPath() {
+  const path = await callApi('get_summary_path', null);
+  if (!path) return;
+  _summaryPath = path;
+  document.getElementById('summary-path').textContent = path;
+}
+function copyPath() {
+  if (!_summaryPath) return;
+  navigator.clipboard.writeText(_summaryPath).then(() => {
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = '✓ Copié';
+    setTimeout(() => btn.textContent = 'Copier', 1500);
+  });
+}
+
 async function checkVersion() {
   const el = document.getElementById('ver');
   const v = await callApi('get_version', null);
@@ -760,6 +779,7 @@ window.addEventListener('load', () => setTimeout(async () => {
   const cfg = await callApi('get_config', null);
   populate(cfg);
   loadSummary();
+  loadSummaryPath();
   checkVersion();
 }, 50));
 </script>
@@ -827,6 +847,9 @@ def open_settings_window():
                 except Exception:
                     pass
                 result = {"local": VERSION, "remote": remote}
+
+            elif action == "get_summary_path":
+                result = str(SUMMARY_FILE)
 
             elif action == "get_config":
                 result = load_config()
