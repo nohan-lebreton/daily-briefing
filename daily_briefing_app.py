@@ -405,6 +405,8 @@ def _build_settings_html() -> str:
   .btn-primary { background:var(--accent); color:#fff; font-weight:600; }
   .btn-primary:hover { background:var(--accent-h); }
   .btn-primary:disabled { background:#d2d2d7; color:#fff; cursor:default; transform:none; }
+  .btn-danger  { background:#ff3b30; color:#fff; }
+  .btn-danger:hover  { background:#ff2d20; }
 </style>
 </head>
 <body>
@@ -516,6 +518,7 @@ def _build_settings_html() -> str:
 </div>
 
 <div class="bottom-bar">
+  <button class="btn btn-danger"  onclick="uninstallApp()">Désinstaller</button>
   <span class="confirm" id="confirm">✓ Paramètres sauvegardés</span>
   <button class="btn btn-ghost"   onclick="testAlarm()">🔊 Tester</button>
   <button class="btn btn-primary" id="btn-save" onclick="saveSettings()" disabled>Sauvegarder</button>
@@ -639,6 +642,11 @@ async function testAlarm() {
   await callApi('run_test', getConfig());
 }
 
+async function uninstallApp() {
+  if (!confirm('Désinstaller Daily Briefing ?\n\nL\'alarme sera supprimée et l\'application quittera.')) return;
+  callApi('uninstall', null);
+}
+
 async function updateApp() {
   const btn = document.querySelector('.btn-update');
   btn.disabled = true;
@@ -733,6 +741,13 @@ def open_settings_window():
                     }
                 else:
                     result = {"date": None, "text": None}
+
+            elif action == "uninstall":
+                subprocess.run(["launchctl", "unload", str(PLIST_PATH)], capture_output=True)
+                if PLIST_PATH.exists():
+                    PLIST_PATH.unlink()
+                NSApplication.sharedApplication().terminate_(None)
+                return
 
             elif action == "update_from_repo":
                 import urllib.request
