@@ -21,7 +21,7 @@ from pathlib import Path
 
 # ─── Version ──────────────────────────────────────────────────────────────────
 
-VERSION      = "2026-06-14.10"
+VERSION      = "2026-06-14.11"
 REPO_RAW_URL = (
     "https://raw.githubusercontent.com/"
     "nohan-lebreton/daily-briefing/main/daily_briefing_app.py"
@@ -123,41 +123,6 @@ _MONTHS_FR = ["janvier","février","mars","avril","mai","juin",
                "juillet","août","septembre","octobre","novembre","décembre"]
 _DAYS_FR   = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"]
 
-_CALENDAR_SCRIPT = """
-tell application "Calendar"
-    set todayDate to current date
-    set h to hours of todayDate
-    set m to minutes of todayDate
-    set s to seconds of todayDate
-    set startOfDay to todayDate - h * hours - m * minutes - s * seconds
-    set endOfDay to startOfDay + (23 * hours + 59 * minutes + 59 * seconds)
-    set result to ""
-    repeat with cal in calendars
-        try
-            set evts to (every event of cal whose start date >= startOfDay and start date <= endOfDay)
-            repeat with evt in evts
-                set evtStart to start date of evt
-                set hh to text -2 thru -1 of ("0" & (hours of evtStart as integer))
-                set mm to text -2 thru -1 of ("0" & (minutes of evtStart as integer))
-                set result to result & hh & ":" & mm & " - " & summary of evt & linefeed
-            end repeat
-        end try
-    end repeat
-    return result
-end tell
-"""
-
-
-def get_calendar_events() -> str:
-    try:
-        r = subprocess.run(
-            ["osascript", "-e", _CALENDAR_SCRIPT],
-            capture_output=True, text=True, timeout=15,
-        )
-        return r.stdout.strip()
-    except Exception:
-        return ""
-
 
 def generate_brief(cfg: dict) -> str:
     """Appelle l'API Anthropic pour générer le brief du jour et l'écrit dans SUMMARY_FILE."""
@@ -167,16 +132,14 @@ def generate_brief(cfg: dict) -> str:
     if not api_key:
         return ""
 
-    model  = cfg.get("ai_model", "claude-haiku-4-5-20251001")
-    events = get_calendar_events()
-    today  = datetime.date.today()
+    model    = cfg.get("ai_model", "claude-haiku-4-5-20251001")
+    today    = datetime.date.today()
     date_str = f"{_DAYS_FR[today.weekday()]} {today.day} {_MONTHS_FR[today.month - 1]} {today.year}"
 
-    parts = [f"Génère un brief de réveil concis pour {date_str}."]
-    if events:
-        parts.append(f"Événements du jour :\n{events}")
-    else:
-        parts.append("Aucun événement calendrier pour aujourd'hui.")
+    parts = [
+        f"Génère un brief de réveil concis pour aujourd'hui, {date_str}.",
+        "Consulte mes événements de calendrier du jour pour les inclure dans le brief.",
+    ]
     extra = cfg.get("ai_context", "").strip()
     if extra:
         parts.append(f"Contexte supplémentaire : {extra}")
@@ -650,20 +613,13 @@ def _build_settings_html() -> str:
     <div class="section-label">Accès au calendrier</div>
     <div class="card">
       <div style="padding:14px 16px;font-size:13px;line-height:1.6;color:#3a3a3c;">
-        Pour que l'IA ait accès à tes événements du jour, connecte ton calendrier
-        favori (Google Calendar, Outlook, iCloud…) à l'outil que tu utilises&nbsp;:
-        <div style="margin:12px 0;display:flex;flex-direction:column;gap:8px;">
-          <div style="padding:10px 14px;background:#f5f5f7;border-radius:10px;">
-            <div style="font-weight:600;margin-bottom:3px;">Sur claude.ai</div>
-            <div style="color:var(--t2);">Va dans <strong>Intégrations</strong> (icône puzzle) → connecte ton calendrier.
-            Claude aura alors accès à tes événements lors de la génération du brief.</div>
-          </div>
-          <div style="padding:10px 14px;background:#f5f5f7;border-radius:10px;">
-            <div style="font-weight:600;margin-bottom:3px;">Avec la clé API (automatique)</div>
-            <div style="color:var(--t2);">L'app lit l'<strong>app Calendrier macOS</strong>. Assure-toi que ton
-            calendrier est synchronisé via <strong>Réglages Système → Comptes Internet</strong>.</div>
-          </div>
-        </div>
+        Pour que Claude ait accès à tes événements du jour, connecte ton calendrier
+        favori <strong>une seule fois</strong> sur claude.ai&nbsp;:
+        <ol style="margin:10px 0 4px 18px;display:flex;flex-direction:column;gap:7px;">
+          <li>Ouvre <strong>claude.ai</strong> → clique sur l'icône <strong>Intégrations</strong></li>
+          <li>Ajoute ton calendrier (Google Calendar, Outlook, iCloud…)</li>
+          <li>C'est tout — Claude pourra désormais consulter tes événements</li>
+        </ol>
       </div>
     </div>
   </div>
