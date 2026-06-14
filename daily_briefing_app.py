@@ -21,7 +21,7 @@ from pathlib import Path
 
 # ─── Version ──────────────────────────────────────────────────────────────────
 
-VERSION      = "2026-06-14.2"
+VERSION      = "2026-06-14.3"
 REPO_RAW_URL = (
     "https://raw.githubusercontent.com/"
     "nohan-lebreton/daily-briefing/main/daily_briefing_app.py"
@@ -557,6 +557,22 @@ def _build_settings_html() -> str:
         <button class="btn-refresh" onclick="loadSummary()">↺ Actualiser</button>
       </div>
       <div class="brief-body" id="brief-text">—</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Comment générer le brief ?</div>
+    <div class="card">
+      <div style="padding:14px 16px;font-size:13px;line-height:1.6;color:#3a3a3c">
+        Demande à ton IA (Claude, ChatGPT…) de créer un <strong>runner automatique</strong>
+        qui génère ton résumé de journée et le place ici&nbsp;:
+        <div style="margin:10px 0;padding:8px 12px;background:#f5f5f7;border-radius:8px;
+                    font:12px/1.5 'SF Mono','Menlo',monospace;color:#1d1d1f;word-break:break-all">
+          ~/daily-briefing-summary.txt
+        </div>
+        Ce fichier doit être <strong>mis à jour chaque matin</strong> avant l'heure de ton réveil.
+        L'app le lira et le dictera à voix haute après ta musique.
+      </div>
     </div>
   </div>
 
