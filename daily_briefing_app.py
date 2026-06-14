@@ -21,7 +21,7 @@ from pathlib import Path
 
 # ─── Version ──────────────────────────────────────────────────────────────────
 
-VERSION      = "2026-06-14.3"
+VERSION      = "2026-06-14.4"
 REPO_RAW_URL = (
     "https://raw.githubusercontent.com/"
     "nohan-lebreton/daily-briefing/main/daily_briefing_app.py"
@@ -868,9 +868,10 @@ def open_settings_window():
                         [sys.executable, str(APP_SCRIPT)],
                         start_new_session=True,
                     )
-                    # Quitter l'instance actuelle pour éviter le double icône
-                    NSApplication.sharedApplication().terminate_(None)
-                    return
+                    # os._exit : sortie immédiate sans passer par NSApplication
+                    # ni déclencher atexit — évite le conflit avec le SIGTERM
+                    # qu'envoie la nouvelle instance via _ensure_single_instance.
+                    os._exit(0)
                 except Exception as e:
                     result = f"error:{e}"
 
