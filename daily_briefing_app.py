@@ -12,9 +12,11 @@ Modes d'exécution :
 import sys
 import json
 import os
+import signal
 import subprocess
 import threading
 import datetime
+import atexit
 from pathlib import Path
 
 # ─── Version ──────────────────────────────────────────────────────────────────
@@ -29,6 +31,7 @@ REPO_RAW_URL = (
 
 APP_SCRIPT   = Path(__file__).resolve()
 CONFIG_DIR   = Path.home() / ".daily-briefing"
+PID_FILE     = CONFIG_DIR / "menubar.pid"
 
 # Icône soleil monochrome encodée en base64 (PNG 22x22 template-compatible)
 _ICON_B64 = (
@@ -47,6 +50,32 @@ def _get_icon_path() -> str:
 CONFIG_FILE  = CONFIG_DIR / "config.json"
 SUMMARY_FILE = Path.home() / "daily-briefing-summary.txt"
 PLIST_PATH   = Path.home() / "Library" / "LaunchAgents" / "com.fairforge.daily-briefing.plist"
+
+
+# ─── Instance unique ──────────────────────────────────────────────────────────
+
+def _ensure_single_instance():
+    """Tue l'instance précédente si elle tourne encore, puis enregistre ce PID."""
+    CONFIG_DIR.mkdir(exist_ok=True)
+    if PID_FILE.exists():
+        try:
+            old_pid = int(PID_FILE.read_text().strip())
+            if old_pid != os.getpid():
+                os.kill(old_pid, signal.SIGTERM)
+                import time; time.sleep(0.4)
+        except (ValueError, ProcessLookupError, OSError):
+            pass
+    PID_FILE.write_text(str(os.getpid()))
+    atexit.register(_release_pid)
+
+
+def _release_pid():
+    try:
+        if PID_FILE.exists() and PID_FILE.read_text().strip() == str(os.getpid()):
+            PID_FILE.unlink()
+    except Exception:
+        pass
+
 
 # ─── Config par défaut ────────────────────────────────────────────────────────
 
@@ -928,6 +957,7 @@ def open_settings_window():
 # ─── App menubar ──────────────────────────────────────────────────────────────
 
 def run_menubar_app():
+    _ensure_single_instance()
     import rumps
 
     class DailyBriefingApp(rumps.App):
