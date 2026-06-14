@@ -640,14 +640,17 @@ async function testAlarm() {
 }
 
 async function updateApp() {
-  const path = await callApi('pick_update_file', null);
-  if (!path) return;
-  const result = await callApi('apply_update', { path });
+  const btn = document.querySelector('.btn-update');
+  btn.disabled = true;
+  btn.textContent = 'Mise à jour…';
+  const result = await callApi('update_from_repo', null);
   if (result === 'ok') {
     alert('✓ App mise à jour — elle redémarre automatiquement.');
     callApi('close', null);
   } else {
     alert('Erreur : ' + result);
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5.5" y1="9" x2="5.5" y2="1"/><polyline points="2,4 5.5,1 9,4"/></svg> Mettre à jour';
   }
 }
 
@@ -682,10 +685,10 @@ def open_settings_window():
         from AppKit import (
             NSWindow, NSWindowStyleMaskTitled, NSWindowStyleMaskClosable,
             NSWindowStyleMaskResizable, NSWindowStyleMaskMiniaturizable,
-            NSBackingStoreBuffered, NSApplication, NSOpenPanel,
+            NSBackingStoreBuffered, NSApplication,
         )
         from WebKit import WKWebView, WKWebViewConfiguration, WKUserContentController
-        from Foundation import NSObject, NSURL
+        from Foundation import NSObject
         import objc
     except ImportError:
         # PyObjC absent (ne devrait pas arriver — installé avec rumps)
@@ -731,36 +734,40 @@ def open_settings_window():
                 else:
                     result = {"date": None, "text": None}
 
-            elif action == "pick_update_file":
-                panel = NSOpenPanel.openPanel()
-                panel.setCanChooseFiles_(True)
-                panel.setCanChooseDirectories_(False)
-                panel.setAllowsMultipleSelection_(False)
-                panel.setAllowedFileTypes_(["py"])
-                panel.setDirectoryURL_(
-                    NSURL.fileURLWithPath_(str(Path.home() / "Downloads"))
+            elif action == "update_from_repo":
+                import urllib.request
+                RAW_URL = (
+                    "https://raw.githubusercontent.com/"
+                    "nohan-lebreton/daily-briefing/main/daily_briefing_app.py"
                 )
-                result = str(panel.URL().path()) if panel.runModal() == 1 else None
-
-            elif action == "apply_update":
-                import shutil
-                path = str(data.get("path", ""))
                 try:
-                    shutil.copy(path, str(APP_SCRIPT))
-                    subprocess.run(
-                        ["launchctl", "stop", "com.fairforge.daily-briefing-menubar"],
-                        capture_output=True,
+                    with urllib.request.urlopen(RAW_URL, timeout=15) as r:
+                        new_code = r.read()
+                    APP_SCRIPT.write_bytes(new_code)
+                    subprocess.Popen(
+                        [sys.executable, str(APP_SCRIPT)],
+                        start_new_session=True,
                     )
                     result = "ok"
                 except Exception as e:
                     result = f"error:{e}"
 
             elif action == "close":
-                win = _settings_refs["win"]
+                wv = _settings_refs.get("wv")
+                if wv:
+                    try:
+                        wv.configuration().userContentController().removeScriptMessageHandlerForName_("api")
+                    except Exception:
+                        pass
+                win = _settings_refs.get("win")
+                # Clear refs before close() so windowWillClose_ (called
+                # synchronously inside close()) finds them already None.
+                _settings_refs["win"]      = None
+                _settings_refs["wv"]       = None
+                _settings_refs["handler"]  = None
+                _settings_refs["delegate"] = None
                 if win:
                     win.close()
-                    _settings_refs["win"] = None
-                    _settings_refs["wv"]  = None
                 return
 
             # Envoyer la réponse au JS — utiliser wv directement (pas win.contentView())
@@ -778,13 +785,27 @@ def open_settings_window():
 
     class _Delegate(NSObject):
         def windowWillClose_(self, _notif):
+            # Remove message handler early; defer win/wv/delegate cleanup to
+            # windowDidClose_ to avoid releasing the NSWindow while [close]
+            # is still executing on self.
+            wv = _settings_refs.get("wv")
+            if wv:
+                try:
+                    wv.configuration().userContentController().removeScriptMessageHandlerForName_("api")
+                except Exception:
+                    pass
+            _settings_refs["handler"] = None
+
+        def windowDidClose_(self, _notif):
             _settings_refs["win"]      = None
             _settings_refs["wv"]       = None
-            _settings_refs["handler"]  = None
             _settings_refs["delegate"] = None
 
     _Delegate.windowWillClose_ = objc.selector(
         _Delegate.windowWillClose_, signature=b"v@:@"
+    )
+    _Delegate.windowDidClose_ = objc.selector(
+        _Delegate.windowDidClose_, signature=b"v@:@"
     )
 
     handler  = _Handler.alloc().init()
@@ -836,8 +857,8 @@ def run_menubar_app():
         def __init__(self):
             super().__init__("", icon=_get_icon_path(), template=True, quit_button=None)
             self.menu = [
-                rumps.MenuItem("Paramètres…",        callback=self.open_settings),
-                rumps.MenuItem("Tester maintenant",  callback=self.test_now),
+                rumps.MenuItem("Paramètres…"),
+                rumps.MenuItem("Tester maintenant"),
                 None,
                 rumps.MenuItem("Quitter", callback=rumps.quit_application),
             ]
