@@ -21,7 +21,7 @@ from pathlib import Path
 
 # ─── Version ──────────────────────────────────────────────────────────────────
 
-VERSION      = "2026-06-14.5"
+VERSION      = "2026-06-14.6"
 REPO_RAW_URL = (
     "https://raw.githubusercontent.com/"
     "nohan-lebreton/daily-briefing/main/daily_briefing_app.py"
@@ -730,13 +730,12 @@ async function loadSummaryPath() {
   _summaryPath = path;
   document.getElementById('summary-path').textContent = path;
 }
-function copyPath() {
+async function copyPath() {
   if (!_summaryPath) return;
-  navigator.clipboard.writeText(_summaryPath).then(() => {
-    const btn = document.getElementById('copy-btn');
-    btn.textContent = '✓ Copié';
-    setTimeout(() => btn.textContent = 'Copier', 1500);
-  });
+  await callApi('copy_to_clipboard', {text: _summaryPath});
+  const btn = document.getElementById('copy-btn');
+  btn.textContent = '✓ Copié';
+  setTimeout(() => btn.textContent = 'Copier', 1500);
 }
 
 async function checkVersion() {
@@ -850,6 +849,13 @@ def open_settings_window():
 
             elif action == "get_summary_path":
                 result = str(SUMMARY_FILE)
+
+            elif action == "copy_to_clipboard":
+                from AppKit import NSPasteboard, NSPasteboardTypeString
+                pb = NSPasteboard.generalPasteboard()
+                pb.clearContents()
+                pb.setString_forType_(str(data.get("text", "")), NSPasteboardTypeString)
+                result = "ok"
 
             elif action == "get_config":
                 result = load_config()
