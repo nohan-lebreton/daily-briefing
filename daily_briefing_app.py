@@ -21,7 +21,7 @@ from pathlib import Path
 
 # ─── Version ──────────────────────────────────────────────────────────────────
 
-VERSION      = "2026-06-14.1"
+VERSION      = "2026-06-14.2"
 REPO_RAW_URL = (
     "https://raw.githubusercontent.com/"
     "nohan-lebreton/daily-briefing/main/daily_briefing_app.py"
