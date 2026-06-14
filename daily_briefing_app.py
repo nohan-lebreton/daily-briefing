@@ -21,7 +21,7 @@ from pathlib import Path
 
 # ─── Version ──────────────────────────────────────────────────────────────────
 
-VERSION      = "2026-06-14.8"
+VERSION      = "2026-06-14.9"
 REPO_RAW_URL = (
     "https://raw.githubusercontent.com/"
     "nohan-lebreton/daily-briefing/main/daily_briefing_app.py"
@@ -647,6 +647,27 @@ def _build_settings_html() -> str:
   </div>
 
   <div class="section">
+    <div class="section-label">Accès au calendrier</div>
+    <div class="card">
+      <div style="padding:14px 16px;font-size:13px;line-height:1.6;color:#3a3a3c;">
+        L'app lit tes événements du jour depuis <strong>l'app Calendrier macOS</strong>.
+        Elle est compatible avec <strong>Google Calendar, iCloud, Outlook</strong> — ou tout autre
+        agenda — à condition de le synchroniser une fois&nbsp;:
+        <ol style="margin:10px 0 4px 18px;display:flex;flex-direction:column;gap:6px;">
+          <li>Ouvre <strong>Réglages Système</strong> → <strong>Comptes Internet</strong></li>
+          <li>Ajoute ton compte (Google, iCloud…) et active <strong>Calendrier</strong></li>
+          <li>Tes événements apparaissent alors dans l'app Calendrier — et dans ce brief</li>
+        </ol>
+        <div style="margin-top:10px;padding:8px 12px;background:#f0f9f0;border-radius:8px;
+                    border:1px solid #a8dab5;font-size:12px;color:#1a7f37;display:flex;gap:6px;align-items:flex-start;">
+          <span style="flex-shrink:0;">✓</span>
+          <span>Si ton calendrier apparaît déjà dans l'app Calendrier macOS, tu n'as rien à faire.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
     <div class="section-label">Intelligence Artificielle</div>
     <div class="card">
       <div class="row" style="flex-direction:column;align-items:flex-start;padding-top:10px;padding-bottom:8px;gap:3px;">
@@ -697,12 +718,11 @@ def _build_settings_html() -> str:
   </div>
 
   <div class="section">
-    <div class="section-label">Comment générer le brief ?</div>
+    <div class="section-label">Fichier résumé (avancé)</div>
     <div class="card">
       <div style="padding:14px 16px;font-size:13px;line-height:1.6;color:#3a3a3c">
-        Avec une clé API, le brief est <strong>généré automatiquement</strong> depuis ton calendrier
-        macOS à l'heure de l'alarme. Tu peux aussi le remplacer manuellement — le contenu du fichier
-        ci-dessous sera lu à voix haute&nbsp;:
+        Le brief est généré automatiquement et sauvegardé ici. Tu peux aussi
+        <strong>modifier ce fichier manuellement</strong> — son contenu sera lu à voix haute&nbsp;:
         <div style="margin:10px 0;display:flex;align-items:center;gap:8px">
           <div id="summary-path" style="flex:1;padding:8px 12px;background:#f5f5f7;border-radius:8px;
                     font:12px/1.5 'SF Mono','Menlo',monospace;color:#1d1d1f;word-break:break-all">…</div>
